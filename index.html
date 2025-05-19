@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能健康评估系统</title>
+    <style>
+        body {
+            font-family: "微软雅黑", sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f7fa;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .result-box {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .radar-chart, .bar-chart {
+            max-width: 600px;
+            margin: 20px auto;
+        }
+        .alert {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .alert-green { background: #e8f5e9; color: #2e7d32; }
+        .alert-yellow { background: #fff9c4; color: #f57c00; }
+        .alert-red { background: #ffebee; color: #b71c1c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="color: #2196F3; text-align: center;">智能健康评估系统</h1>
+        
+        <!-- 输入表单 -->
+        <form id="healthForm">
+            <div class="form-group">
+                <label>身高（cm）</label>
+                <input type="number" id="height" placeholder="请输入身高" required>
+            </div>
+            <div class="form-group">
+                <label>体重（kg）</label>
+                <input type="number" id="weight" placeholder="请输入体重" required>
+            </div>
+            <div class="form-group">
+                <label>收缩压（mmHg）</label>
+                <input type="number" id="systolic" placeholder="收缩压（如120）" required>
+            </div>
+            <div class="form-group">
+                <label>舒张压（mmHg）</label>
+                <input type="number" id="diastolic" placeholder="舒张压（如80）" required>
+            </div>
+            <div class="form-group">
+                <label>空腹血糖（mmol/L）</label>
+                <input type="number" step="0.1" id="glucose" placeholder="如5.6" required>
+            </div>
+            <div class="form-group">
+                <label>总胆固醇（mmol/L）</label>
+                <input type="number" step="0.1" id="cholesterol" placeholder="如4.5" required>
+            </div>
+            <button type="submit">生成健康报告</button>
+        </form>
+
+        <!-- 结果展示 -->
+        <div id="result" class="result-box"></div>
+    </div>
+
+    <!-- 图表库 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script>
+        // 健康标准参考（WHO标准）
+        const HEALTH_STANDARDS = {
+            bmi: { normal: [18.5, 24], overweigh: [24, 28], obese: 28 },
+            bloodPressure: { systolic: [90, 120], diastolic: [60, 80] },
+            glucose: { normal: [3.9, 6.1], prediabetes: [6.1, 7.0], diabetes: 7.0 },
+            cholesterol: { normal: [0, 5.2], borderline: [5.2, 6.2], high: 6.2 }
+        };
+
+        // 计算健康评分
+        function calculateScore(metrics) {
+            let score = 100;
+            Object.keys(metrics).forEach(metric => {
+                if (metrics[metric].status === "异常") score -= 20;
+                else if (metrics[metric].status === "临界") score -= 10;
+            });
+            return Math.max(0, score);
+        }
+
+        // 生成建议
+        function generateAdvice(metrics, bmi) {
+            const advice = {
+                exercise: "",
+                diet: ""
+            };
+            const hasHighBP = metrics.bloodPressure.status === "异常";
+            const hasHighSugar = metrics.glucose.status === "异常";
+            const hasHighChol = metrics.cholesterol.status === "异常";
+            const isObese = bmi >= HEALTH_STANDARDS.bmi.obese;
+
+            // 运动建议
+            if (isObese || hasHighBP || hasHighSugar || hasHighChol) {
+                advice.exercise = "建议每周至少150分钟中等强度运动（如快走、游泳），肥胖者可增加力量训练";
+            } else {
+                advice.exercise = "保持现有运动习惯，每周3-4次有氧运动维持健康";
+            }
+
+            // 饮食建议
+            if (hasHighBP) advice.diet += "低盐饮食，每日钠摄入<5g；";
+            if (hasHighSugar) advice.diet += "低糖饮食，避免精制糖，多吃燕麦、蔬菜；";
+            if (hasHighChol) advice.diet += "低脂饮食，减少红肉，增加鱼类、坚果摄入；";
+            if (!advice.diet) advice.diet = "饮食结构均衡，多吃蔬菜水果，适量摄入蛋白质";
+
+            return advice;
+        }
+
+        // 渲染结果
+        function renderResult(metrics, score, advice) {
+            const resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = `
+                <h2 style="color: #4CAF50; text-align: center;">健康评分：<span class="score">${score}分</span></h2>
+                <div class="alert ${score >= 80 ? 'alert-green' : score >= 60 ? 'alert-yellow' : 'alert-red'}">
+                    健康等级：${score >= 80 ? "优秀" : score >= 60 ? "中等" : "需警惕"}
+                </div>
+                <h3>指标分析</h3>
+                <div class="radar-chart">
+                    <canvas id="radarChart"></canvas>
+                </div>
+                <h3>个性化建议</h3>
+                <div class="alert alert-green">
+                    <strong>运动建议：</strong>${advice.exercise}
+                </div>
+                <div class="alert alert-yellow">
+                    <strong>饮食建议：</strong>${advice.diet}
+                </div>
+            `;
+
+            // 绘制雷达图
+            const radarData = {
+                labels: ["BMI", "血压", "血糖", "血脂"],
+                datasets: [{
+                    label: "个人指标",
+                    data: [
+                        metrics.bmi.score,
+                        metrics.bloodPressure.score,
+                        metrics.glucose.score,
+                        metrics.cholesterol.score
+                    ],
+                    backgroundColor: "rgba(33, 150, 243, 0.2)",
+                    borderColor: "#2196F3",
+                    pointRadius: 5
+                }, {
+                    label: "健康范围",
+                    data: [100, 100, 100, 100],
+                    type: "line",
+                    borderColor: "gray",
+                    lineTension: 0
+                }]
+            };
+
+            const radarCtx = document.getElementById("radarChart").getContext("2d");
+            new Chart(radarCtx, {
+                type: "radar",
+                data: radarData,
+                options: {
+                    scale: {
+                        ticks: { max: 100, min: 0 }
+                    }
+                }
+            });
+        }
+
+        // 主函数
+        async function handleSubmit(e) {
+            e.preventDefault();
+            const form = e.target;
+            const height = form.height.value / 100;
+            const weight = form.weight.value;
+            const bmi = weight / (height * height).toFixed(1);
+            const systolic = form.systolic.value;
+            const diastolic = form.diastolic.value;
+            const glucose = form.glucose.value;
+            const cholesterol = form.cholesterol.value;
+
+            // 计算各项指标状态
+            const metrics = {
+                bmi: {
+                    value: bmi,
+                    status: getStatus(bmi, HEALTH_STANDARDS.bmi),
+                    score: getScore(bmi, HEALTH_STANDARDS.bmi)
+                },
+                bloodPressure: {
+                    value: `${systolic}/${diastolic}`,
+                    status: getStatus([systolic, diastolic], HEALTH_STANDARDS.bloodPressure),
+                    score: getScore([systolic, diastolic], HEALTH_STANDARDS.bloodPressure)
+                },
+                glucose: {
+                    value: glucose,
+                    status: getStatus(glucose, HEALTH_STANDARDS.glucose),
+                    score: getScore(glucose, HEALTH_STANDARDS.glucose)
+                },
+                cholesterol: {
+                    value: cholesterol,
+                    status: getStatus(cholesterol, HEALTH_STANDARDS.cholesterol),
+                    score: getScore(cholesterol, HEALTH_STANDARDS.cholesterol)
+                }
+            };
+
+            const score = calculateScore(metrics);
+            const advice = generateAdvice(metrics, bmi);
+            renderResult(metrics, score, advice);
+        }
+
+        // 通用状态判断函数
+        function getStatus(value, standards) {
+            if (Array.isArray(value)) { // 处理血压（双值）
+                const [s, d] = value;
+                if (s < standards.systolic[0] || d < standards.diastolic[0]) return "偏低";
+                if (s >= standards.systolic[1] && d <= standards.diastolic[1]) return "正常";
+                if (s > standards.systolic[1] || d > standards.diastolic[1]) return "异常";
+                return "临界";
+            } else { // 处理单值指标（BMI/血糖/血脂）
+                if (value < standards.normal[0]) return "偏低";
+                if (value >= standards.normal[0] && value < standards.normal[1]) return "正常";
+                if (standards.overweigh && value >= standards.normal[1] && value < standards.overweigh[1]) return "临界";
+                if (value >= (standards.prediabetes || standards.borderline || standards.obese)) return "异常";
+                return "临界";
+            }
+        }
+
+        // 通用评分函数
+        function getScore(value, standards) {
+            if (Array.isArray(value)) return 100; // 血压评分逻辑可优化，此处简化
+            if (getStatus(value, standards) === "正常") return 100;
+            if (getStatus(value, standards) === "临界") return 80;
+            return 50;
+        }
+
+        // 绑定表单提交事件
+        document.getElementById("healthForm").addEventListener("submit", handleSubmit);
+    </script>
+</body>
+</html>
